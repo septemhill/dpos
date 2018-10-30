@@ -52,7 +52,7 @@ func (bc *Blockchain) CreateBlock() *Block {
 }
 
 func (bc *Blockchain) printBlockchain() {
-	fmt.Printf("NodeId %s ", bc.Node.ID)
+	fmt.Printf("NodeId %s, BlockHeight: %d ", bc.Node.ID, len(bc.Blocks))
 	for i := 0; i < len(bc.Blocks); i++ {
 		//fmt.Printf("%s -> ", bc.Blocks[i].GetForger())
 		fmt.Printf("%d -> ", bc.Blocks[i].GetHeight())
