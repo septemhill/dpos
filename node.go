@@ -179,7 +179,7 @@ func (n *Node) Connect(ctx context.Context) {
 
 				n.Conns[conn] = codec
 
-				peer := NewPeer(ctx, n, conn, peerInfos[i].ID)
+				peer := NewPeer(ctx, n, conn, peerInfos[i].ID, true)
 				n.Peers[peerInfos[i].ID] = peer
 			}
 			n.RWMutex.Unlock()
@@ -231,7 +231,7 @@ func (n *Node) handleInitMessage(ctx context.Context, msg *Message, conn *net.TC
 	n.RWMutex.Lock()
 	_, ok := n.Peers[nodeID]
 	if !ok {
-		peer := NewPeer(ctx, n, conn, nodeID)
+		peer := NewPeer(ctx, n, conn, nodeID, false)
 		n.Peers[nodeID] = peer
 	} else {
 		delete(n.Conns, conn)
