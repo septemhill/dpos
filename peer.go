@@ -17,7 +17,7 @@ type PeerInfo struct {
 	Destination string `json:"dest"`
 }
 
-func NewPeer(ctx context.Context, node *Node, conn *net.TCPConn, peerID string) *Peer {
+func NewPeer(ctx context.Context, node *Node, conn *net.TCPConn, peerID string, initMsg bool) *Peer {
 	peer := &Peer{
 		ID:     peerID,
 		NodeID: node.ID,
@@ -28,6 +28,9 @@ func NewPeer(ctx context.Context, node *Node, conn *net.TCPConn, peerID string) 
 	go handleConnection(ctx, conn /*gob.NewDecoder(conn),*/, node)
 
 	//SendMessage(InitMessage(node.ID), peer.ConnEncoder, node.ID)
+	if initMsg {
+		SendMessage(InitMessage(node.ID), node.Conns[conn].Enc, node.ID)
+	}
 
 	return peer
 }

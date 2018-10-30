@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	slotTimeInterval      = 5
+	slotTimeInterval      = 2
 	activeConnectionBase  = 0
 	passiveConnectionBase = 1000
 )
@@ -67,13 +67,13 @@ func main() {
 	node.Connect(ctx)
 	time.Sleep(time.Second * 3)
 
-	i := 0
-	for key := range node.Peers {
-		fmt.Println("Node[", node.ID, "]:", "[", i, "]", node.Peers[key])
-		i++
-	}
+	//i := 0
+	//for key := range node.Peers {
+	//	fmt.Println("Node[", node.ID, "]:", "[", i, "]", node.Peers[key])
+	//	i++
+	//}
 
-	//go node.StartForging()
+	go node.StartForging()
 
 	<-sysDone
 	cancel()

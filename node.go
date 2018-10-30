@@ -26,7 +26,6 @@ type Node struct {
 	Chain    *Blockchain
 	RWMutex  sync.RWMutex
 	LastSlot int64
-	conns    map[net.Addr]*net.TCPConn
 	Conns    map[*net.TCPConn]*ConnectionCodec
 }
 
@@ -64,13 +63,11 @@ func init() {
 	loadRemoteAddressList()
 }
 
-func handleConnection(ctx context.Context, conn *net.TCPConn /*dec *gob.Decoder, */, node *Node) {
-	//dec := gob.NewDecoder(conn)
+func handleConnection(ctx context.Context, conn *net.TCPConn, node *Node) {
 	dec := node.Conns[conn].Dec
 	for {
 		var msg Message
-		//conn.SetDeadline(time.Now().Add(time.Second * 1))
-		//conn.SetReadDeadline(time.Now().Add(time.Second * 1))
+		conn.SetReadDeadline(time.Now().Add(time.Second * 1))
 		err := ReceiveMessage(&msg, dec)
 
 		fmt.Println("[RECEIVED MSG 1]")
@@ -93,7 +90,7 @@ func handleConnection(ctx context.Context, conn *net.TCPConn /*dec *gob.Decoder,
 		case <-ctx.Done():
 			conn.Close()
 		default:
-			//time.Sleep(time.Microsecond * 20)
+			time.Sleep(time.Microsecond * 20)
 		}
 	}
 }
@@ -110,17 +107,13 @@ func acceptConnection(ctx context.Context, listener *net.TCPListener, node *Node
 				log.Println("[AcceptTCP Failed]", err)
 			}
 		} else {
-			node.conns[conn.RemoteAddr()] = conn
-
 			codec := &ConnectionCodec{
 				gob.NewEncoder(conn),
 				gob.NewDecoder(conn),
 			}
 
 			node.Conns[conn] = codec
-			//dec := gob.NewDecoder(conn)
-			//peer := NewPeer(listenerCtx, conn)
-			go handleConnection(listenerCtx, conn /*dec,*/, node)
+			go handleConnection(listenerCtx, conn, node)
 		}
 
 		select {
@@ -154,7 +147,6 @@ func NewNode(ctx context.Context, nodeID int64, port int64) *Node {
 		//ID:    nodeID,
 		ID:    peerInfos[nodeID].ID,
 		Peers: make(map[string]*Peer, 0),
-		conns: make(map[net.Addr]*net.TCPConn, 0),
 		Conns: make(map[*net.TCPConn]*ConnectionCodec, 0),
 	}
 
@@ -212,7 +204,6 @@ func (n *Node) StartForging() {
 		}
 
 		delegateSlot := currentSlot % numberOfDelegates
-		//delegateID := currentSlot % numberOfDelegates
 		delegateID := peerInfos[delegateSlot].ID
 
 		if delegateID == n.ID {
@@ -230,7 +221,6 @@ func (n *Node) StartForging() {
 
 func (n *Node) Broadcast(msg *Message) {
 	for _, peer := range n.Peers {
-		//SendMessage(msg, peer.ConnEncoder, n.ID)
 		SendMessage(msg, n.Conns[peer.Conn].Enc, n.ID)
 	}
 }
@@ -244,7 +234,8 @@ func (n *Node) handleInitMessage(ctx context.Context, msg *Message, conn *net.TC
 		peer := NewPeer(ctx, n, conn, nodeID)
 		n.Peers[nodeID] = peer
 	} else {
-		delete(n.conns, conn.RemoteAddr())
+		delete(n.Conns, conn)
+		conn.Close()
 	}
 	n.RWMutex.Unlock()
 }
