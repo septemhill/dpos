@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/gob"
+	"fmt"
 	"log"
 )
 
@@ -67,6 +68,7 @@ func SendMessage(msg *Message, enc *gob.Encoder, nodeID string) error {
 	//	msg.RoutePath = append(msg.RoutePath, nodeID)
 	//}
 
+	fmt.Println("[SENDMSG]", msg)
 	err := enc.Encode(msg)
 	if err != nil {
 		log.Println("[Send Message]", err)

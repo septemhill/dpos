@@ -14,6 +14,11 @@ import (
 	"time"
 )
 
+type ConnectionCodec struct {
+	Enc *gob.Encoder
+	Dec *gob.Decoder
+}
+
 type Node struct {
 	ID       string
 	Peers    map[string]*Peer
@@ -22,6 +27,7 @@ type Node struct {
 	RWMutex  sync.RWMutex
 	LastSlot int64
 	conns    map[net.Addr]*net.TCPConn
+	Conns    map[*net.TCPConn]*ConnectionCodec
 }
 
 var peerInfos = make([]PeerInfo, 0)
@@ -58,18 +64,28 @@ func init() {
 	loadRemoteAddressList()
 }
 
-func handleConnection(ctx context.Context, conn *net.TCPConn, dec *gob.Decoder, node *Node) {
+func handleConnection(ctx context.Context, conn *net.TCPConn /*dec *gob.Decoder, */, node *Node) {
+	//dec := gob.NewDecoder(conn)
+	dec := node.Conns[conn].Dec
 	for {
 		var msg Message
 		//conn.SetDeadline(time.Now().Add(time.Second * 1))
-		conn.SetReadDeadline(time.Now().Add(time.Second * 1))
+		//conn.SetReadDeadline(time.Now().Add(time.Second * 1))
 		err := ReceiveMessage(&msg, dec)
 
+		fmt.Println("[RECEIVED MSG 1]")
 		if err != nil {
-			if err.(*net.OpError).Err.Error() != "i/o timeout" {
-				log.Println("[AcceptTCP Failed]", err)
+			fmt.Println("[RECEIVED MSG 2]", err)
+			if err.Error() == "EOF" {
+				fmt.Println(err)
+				conn.Close()
 			}
+			//fmt.Println(err)
+			//if err.(*net.OpError).Err.Error() != "i/o timeout" {
+			//	log.Println("[Decode Failed]", err)
+			//}
 		} else {
+			fmt.Println("[RECEIVED MSG 3]", msg)
 			node.ProcessMessage(ctx, &msg, conn)
 		}
 
@@ -77,14 +93,12 @@ func handleConnection(ctx context.Context, conn *net.TCPConn, dec *gob.Decoder, 
 		case <-ctx.Done():
 			conn.Close()
 		default:
-			time.Sleep(time.Millisecond * 50)
+			//time.Sleep(time.Microsecond * 20)
 		}
 	}
 }
 
 func acceptConnection(ctx context.Context, listener *net.TCPListener, node *Node) {
-	//conns := make([]*net.TCPConn, 0)
-	//conns := make(map[net.Addr]*net.TCPConn, 0)
 	listenerCtx, cancel := context.WithCancel(context.Background())
 
 	for {
@@ -96,11 +110,17 @@ func acceptConnection(ctx context.Context, listener *net.TCPListener, node *Node
 				log.Println("[AcceptTCP Failed]", err)
 			}
 		} else {
-			//conns = append(conns, conn)
 			node.conns[conn.RemoteAddr()] = conn
-			dec := gob.NewDecoder(conn)
+
+			codec := &ConnectionCodec{
+				gob.NewEncoder(conn),
+				gob.NewDecoder(conn),
+			}
+
+			node.Conns[conn] = codec
+			//dec := gob.NewDecoder(conn)
 			//peer := NewPeer(listenerCtx, conn)
-			go handleConnection(listenerCtx, conn, dec, node)
+			go handleConnection(listenerCtx, conn /*dec,*/, node)
 		}
 
 		select {
@@ -135,6 +155,7 @@ func NewNode(ctx context.Context, nodeID int64, port int64) *Node {
 		ID:    peerInfos[nodeID].ID,
 		Peers: make(map[string]*Peer, 0),
 		conns: make(map[net.Addr]*net.TCPConn, 0),
+		Conns: make(map[*net.TCPConn]*ConnectionCodec, 0),
 	}
 
 	node.Listener = newServer(ctx, port, node)
@@ -158,6 +179,13 @@ func (n *Node) Connect(ctx context.Context) {
 					n.RWMutex.Unlock()
 					continue
 				}
+
+				codec := &ConnectionCodec{
+					gob.NewEncoder(conn),
+					gob.NewDecoder(conn),
+				}
+
+				n.Conns[conn] = codec
 
 				peer := NewPeer(ctx, n, conn, peerInfos[i].ID)
 				n.Peers[peerInfos[i].ID] = peer
@@ -189,9 +217,10 @@ func (n *Node) StartForging() {
 
 		if delegateID == n.ID {
 			newBlock := n.Chain.CreateBlock()
-			n.Chain.CommitBlock(newBlock)
 			n.Broadcast(BlockMessage( /*n.ID, */ *newBlock))
 			fmt.Println("[NODE", n.ID, " NewBlock]", newBlock)
+			n.Chain.CommitBlock(newBlock)
+			fmt.Println("====================[END OF NEW BLOCK]====================")
 			n.LastSlot = currentSlot
 		}
 
@@ -201,7 +230,8 @@ func (n *Node) StartForging() {
 
 func (n *Node) Broadcast(msg *Message) {
 	for _, peer := range n.Peers {
-		SendMessage(msg, peer.ConnEncoder, n.ID)
+		//SendMessage(msg, peer.ConnEncoder, n.ID)
+		SendMessage(msg, n.Conns[peer.Conn].Enc, n.ID)
 	}
 }
 
@@ -221,8 +251,9 @@ func (n *Node) handleInitMessage(ctx context.Context, msg *Message, conn *net.TC
 
 func (n *Node) handleBlockMessage(msg *Message) {
 	block := msg.Body.(Block)
-	//fmt.Println("[Node", n.ID, "Receive Block]", block)
+	fmt.Println("[Node", n.ID, "Receive Block]", block)
 	n.Chain.CommitBlock(&block)
+	fmt.Println("====================[END OF RECEIVE BLOCK]====================")
 }
 
 func (n *Node) ProcessMessage(ctx context.Context, msg *Message, conn *net.TCPConn) {
