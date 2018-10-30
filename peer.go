@@ -29,7 +29,8 @@ func NewPeer(ctx context.Context, node *Node, conn *net.TCPConn, peerID string, 
 
 	//SendMessage(InitMessage(node.ID), peer.ConnEncoder, node.ID)
 	if initMsg {
-		SendMessage(InitMessage(node.ID), node.Conns[conn].Enc, node.ID)
+		enc := node.Conns[conn].Enc
+		SendMessage(InitMessage(node.ID), enc, node.ID)
 	}
 
 	return peer

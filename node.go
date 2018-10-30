@@ -64,15 +64,17 @@ func init() {
 }
 
 func handleConnection(ctx context.Context, conn *net.TCPConn, node *Node) {
+	node.RWMutex.RLock()
 	dec := node.Conns[conn].Dec
+	node.RWMutex.RUnlock()
 	for {
 		var msg Message
 		conn.SetReadDeadline(time.Now().Add(time.Second * 1))
 		err := ReceiveMessage(&msg, dec)
 
-		fmt.Println("[RECEIVED MSG 1]")
+		//fmt.Println("[RECEIVED MSG 1]")
 		if err != nil {
-			fmt.Println("[RECEIVED MSG 2]", err)
+			//fmt.Println("[RECEIVED MSG 2]", err)
 			if err.Error() == "EOF" {
 				fmt.Println(err)
 				conn.Close()
@@ -112,7 +114,9 @@ func acceptConnection(ctx context.Context, listener *net.TCPListener, node *Node
 				gob.NewDecoder(conn),
 			}
 
+			node.RWMutex.Lock()
 			node.Conns[conn] = codec
+			node.RWMutex.Unlock()
 			go handleConnection(listenerCtx, conn, node)
 		}
 
@@ -221,7 +225,10 @@ func (n *Node) StartForging() {
 
 func (n *Node) Broadcast(msg *Message) {
 	for _, peer := range n.Peers {
-		SendMessage(msg, n.Conns[peer.Conn].Enc, n.ID)
+		n.RWMutex.RLock()
+		enc := n.Conns[peer.Conn].Enc
+		n.RWMutex.RUnlock()
+		SendMessage(msg, enc, n.ID)
 	}
 }
 
@@ -235,7 +242,7 @@ func (n *Node) handleInitMessage(ctx context.Context, msg *Message, conn *net.TC
 		n.Peers[nodeID] = peer
 	} else {
 		delete(n.Conns, conn)
-		conn.Close()
+		//conn.Close()
 	}
 	n.RWMutex.Unlock()
 }
